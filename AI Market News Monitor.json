@@ -1,0 +1,233 @@
+{
+  "name": "Gajetour AI Market News Monitor",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 4
+            }
+          ]
+        }
+      },
+      "id": "65968ab1-db37-46ee-8409-319f5349d4a9",
+      "name": "Every 4 Hours",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -400,
+        -64
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const feeds = [\n  'https://www.yjc.ir/fa/rss/3',\n  'https://www.yjc.ir/fa/rss/9',\n  'https://www.yjc.ir/fa/rss/9/121',\n  'https://www.yjc.ir/fa/rss/6',\n  'https://www.yjc.ir/fa/rss/6/44',\n  'https://www.shahrekhabar.com/rss.jsp?type=3',\n  'https://www.shahrekhabar.com/rss.jsp?type=4',\n  'https://www.shahrekhabar.com/rss.jsp?type=2',\n  'https://www.tabnak.ir/fa/rss/17',\n  'https://www.tabnak.ir/fa/rss/1',\n  'https://www.tabnak.ir/fa/rss/6'\n];\nreturn feeds.map(url => ({ json: { url } }));\n"
+      },
+      "id": "07484c6a-980c-422d-8ed1-4b7eba8398a7",
+      "name": "List of RSS URLs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -224,
+        -64
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "options": {}
+      },
+      "id": "b5c46de7-426f-43ed-ace9-756a015e1613",
+      "name": "RSS Read",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1,
+      "position": [
+        -48,
+        -64
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const keywords = ['بورس', 'بازار سرمایه', 'سهام', 'شاخص', 'دلار', 'ارز', 'طلا', 'سکه', 'نفت', 'تحریم', 'جنگ', 'بانک مرکزی', 'کدال', 'هولدینگ'];\nreturn items.filter(i => keywords.some(k => JSON.stringify(i.json).includes(k)));\n"
+      },
+      "id": "e8422b13-6d94-4003-838e-7b6e2e84a2e4",
+      "name": "Filter Market News",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        160,
+        -64
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ─── تجمیع اخبار + حذف تکراری‌ها + تاریخ شمسی (الگوریتم jalaali) ───\nconst MAX_CHARS = 12000;\nconst MAX_ITEMS = 50;\n\n// ─── تبدیل میلادی به شمسی: پیاده‌سازی الگوریتم jalaali-js ───\nfunction div(a, b) { return ~~(a / b); }\nfunction mod(a, b) { return a - ~~(a / b) * b; }\n\nfunction jalCal(jy) {\n  const breaks = [-61, 9, 38, 199, 426, 686, 756, 818, 1111, 1181, 1210, 1635, 2060, 2097, 2192, 2262, 2324, 2394, 2456, 3178];\n  const bl = breaks.length;\n  const gy = jy + 621;\n  let leapJ = -14;\n  let jp = breaks[0];\n  let jump = 0;\n  for (let i = 1; i < bl; i += 1) {\n    const jm = breaks[i];\n    jump = jm - jp;\n    if (jy < jm) break;\n    leapJ = leapJ + div(jump, 33) * 8 + div(mod(jump, 33), 4);\n    jp = jm;\n  }\n  let n = jy - jp;\n  leapJ = leapJ + div(n, 33) * 8 + div(mod(n, 33) + 3, 4);\n  if (mod(jump, 33) === 4 && jump - n === 4) leapJ += 1;\n  const leapG = div(gy, 4) - div((div(gy, 100) + 1) * 3, 4) - 150;\n  const march = 20 + leapJ - leapG;\n  if (jump - n < 6) n = n - jump + div(jump + 4, 33) * 33;\n  let leap = mod(mod(n + 1, 33) - 1, 4);\n  if (leap === -1) leap = 4;\n  return { leap, gy, march };\n}\n\nfunction g2d(gy, gm, gd) {\n  let d = div((gy + div(gm - 8, 6) + 100100) * 1461, 4) + div(153 * mod(gm + 9, 12) + 2, 5) + gd - 34840408;\n  d = d - div(div(gy + 100100 + div(gm - 8, 6), 100) * 3, 4) + 752;\n  return d;\n}\n\nfunction d2j(jdn) {\n  const gy = jyFromJdn(jdn);\n  let jy = gy - 621;\n  const r = jalCal(jy);\n  const jdn1f = g2d(gy, 3, r.march);\n  let k = jdn - jdn1f;\n  if (k >= 0) {\n    if (k <= 185) return { jy, jm: 1 + div(k, 31), jd: mod(k, 31) + 1 };\n    k -= 186;\n  } else {\n    jy -= 1;\n    k += 179;\n    if (r.leap === 1) k += 1;\n  }\n  return { jy, jm: 7 + div(k, 30), jd: mod(k, 30) + 1 };\n}\n\nfunction jyFromJdn(jdn) {\n  let j = 4 * jdn + 139361631;\n  j = j + div(div(4 * jdn + 183187720, 146097) * 3, 4) * 4 - 3908;\n  const i = div(mod(j, 1461), 4) * 5 + 308;\n  const gm = mod(div(i, 153), 12) + 1;\n  return div(j, 1461) - 100100 + div(8 - gm, 6);\n}\n\nfunction toJalali(gy, gm, gd) {\n  return d2j(g2d(gy, gm, gd));\n}\n\n// ─── زمان تهران (UTC+3:30) و قالب‌بندی شمسی ───\nconst toFa = (n) => String(n).replace(/\\d/g, (d) => '۰۱۲۳۴۵۶۷۸۹'[d]);\nconst pad2 = (n) => (n < 10 ? '0' + n : String(n));\n\n// ایران از سال ۱۴۰۱ ساعت تابستانی ندارد و همیشه UTC+3:30 است\nconst tehran = new Date(Date.now() + 3.5 * 60 * 60 * 1000);\nconst j = toJalali(tehran.getUTCFullYear(), tehran.getUTCMonth() + 1, tehran.getUTCDate());\nconst jMonths = ['فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور', 'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند'];\n// getUTCDay: 0=یکشنبه، 1=دوشنبه، ...، 5=جمعه، 6=شنبه\nconst jWeekdays = ['یک\\u200cشنبه', 'دوشنبه', 'سه\\u200cشنبه', 'چهارشنبه', 'پنج\\u200cشنبه', 'جمعه', 'شنبه'];\nconst analysisTime = jWeekdays[tehran.getUTCDay()] + ' ' + toFa(j.jd) + ' ' + jMonths[j.jm - 1] + ' ' + toFa(j.jy) +\n  ' — ساعت ' + toFa(pad2(tehran.getUTCHours())) + ':' + toFa(pad2(tehran.getUTCMinutes()));\n\n// ─── مرتب‌سازی اخبار از جدیدترین + حذف تکراری‌ها ───\nfunction normalizeTitle(t) {\n  return String(t || '')\n    .replace(/[\\u200c\\u200f\\u200e\\s]+/g, ' ')\n    .replace(/[«»\"'?!.,:؛،()[\\]{}\\-–—_\\/]/g, '')\n    .trim();\n}\n\nconst dated = items.map((i) => {\n  const ts = Date.parse(i.json.isoDate || i.json.pubDate || '');\n  return { item: i, ts: isNaN(ts) ? 0 : ts };\n}).sort((a, b) => b.ts - a.ts);\n\nconst seen = new Set();\nconst lines = [];\nfor (const { item } of dated) {\n  if (lines.length >= MAX_ITEMS) break;\n  const title = String(item.json.title || '').replace(/\\s+/g, ' ').trim();\n  if (!title) continue;\n  const key = normalizeTitle(title).slice(0, 45);\n  if (seen.has(key)) continue;\n  seen.add(key);\n  const snippet = String(item.json.contentSnippet || item.json.content || '')\n    .replace(/<[^>]*>/g, ' ')\n    .replace(/\\s+/g, ' ')\n    .trim()\n    .slice(0, 300);\n  lines.push('• ' + title + (snippet ? '\\n  ' + snippet : ''));\n}\n\nlet news = lines.length ? lines.join('\\n\\n') : 'هیچ خبر مرتبطی یافت نشد.';\nif (news.length > MAX_CHARS) news = news.slice(0, MAX_CHARS);\n\nreturn [{ json: { news, analysisTime, count: lines.length } }];\n"
+      },
+      "id": "a228e938-c500-43d6-a68e-4535424e7a1a",
+      "name": "Build AI Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        400,
+        -64
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=تو یک تحلیلگر ارشد بازار سرمایه ایران هستی؛ متخصص بورس تهران (TSE) و فرابورس با سال‌ها تجربه کار عملیاتی در تالار معاملات. گزارش تو برای معامله‌گران حرفه‌ای بورس ایران تهیه می‌شود.\n\n⚠️ محدوده تحلیل (حیاتی):\n- تحلیل تو فقط و فقط درباره «بورس ایران (بورس تهران و فرابورس)» است.\n- به بورس سایر کشورها (آمریکا، اروپا، چین و...) و شاخص‌های خارجی (داو جونز، S&P500، نزدک و...) هیچ اشاره‌ای نکن.\n\nوظیفه تو:\nبر اساس فقط و فقط اخبار زیر، اثر هر خبر را بر بورس تهران تحلیل کن و زنجیره اثر هر خبر را دنبال کن (مثال: تحریم یا تنش سیاسی ← نرخ دلار ← سهام صادراتی؛ نفت جهانی ← پتروشیمی، پالایش و فولاد؛ تصمیم بانک مرکزی ← نقدینگی و جریان پول به بازار).\n\nقوانین تحلیل:\n- فقط از اخبار ارائه‌شده استفاده کن؛ هیچ داده بیرونی، حدس شخصی یا اطلاعات عمومی اضافه نکن.\n- خبر بدون اثر مشخص بر بورس ایران را «خنثی» اعلام کن و روی آن وقت نگذار.\n- پیش‌بینی قطعی خرید یا فروش ممنوع است؛ فقط سناریو و احتمال بده.\n- اخبار تکراری را فقط یک بار لحاظ کن.\n- برای هر اثر، افق زمانی مشخص کن: کوتاه‌مدت (چند ساعت تا چند روز) یا میان‌مدت (چند هفته).\n- اگر هیچ خبر مرتبطی وجود ندارد، فقط در یک خط بنویس «خبر مرتبطی یافت نشد؛ وضعیت بازار: خنثی» و بقیه بخش‌ها را خالی نگذار و همان یک خط را ارسال کن.\n\nسبک خروجی (بسیار مهم):\n- بسیار کوتاه، فشرده و کاربردی بنویس؛ بدون مقدمه، تعارف و توضیح اضافه. کل گزارش زیر ۲۵ خط باشد.\n- هر تحلیل حداکثر یک خط.\n- از ادبیات حرفه‌ای معامله‌گران بورس ایران استفاده کن: عرضه و تقاضا، نقدینگی، صف خرید و فروش، حقیقی و حقوقی، صادراتی‌ها، هولدینگ‌ها، ریسک سیستماتیک و...\n\nفرمت خروجی — دقیقاً همین ساختار را رعایت کن:\n\n━━━━━━━━━━━━━━━━\n📊 رصد هوشمند بورس تهران\n🕒 زمان تحلیل: {{ $json.analysisTime }}\n━━━━━━━━━━━━━━━━\n\n🚨 خبرهای کلیدی:\n• [عنوان خبر] → 🟢 یا 🔴 یا ⚪ | شدت: X/10 | افق: کوتاه‌مدت یا میان‌مدت\n(فقط تا ۳ خبر مهم‌تر)\n\n📈 نمای کلی بازار: 🟢 یا 🔴 یا ⚪ (شدت X/10)\n[یک خط دلیل فنی]\n\n🎯 گروه‌های اثرپذیر بورس:\n• [گروه یا صنعت] → 🟢 یا 🔴 یا ⚪ (X/10) — [یک خط دلیل]\n(فقط ۲ تا ۴ گروه)\n\n💵 عوامل کلان مؤثر بر بورس:\n• دلار: [یک خط]\n• طلا و سکه: [یک خط]\n• نفت: [یک خط]\n(هر عامل فقط در صورت وجود خبر مرتبط؛ در غیر این صورت همان خط را «خنثی» بنویس)\n\n⚠️ اصلی‌ترین ریسک امروز: [یک خط]\n\n📌 جمع‌بندی برای معامله‌گر: [حداکثر دو خط، مشخص و جانب‌دار نباش]\n\n🤖 Gajetour Market Monitor\n━━━━━━━━━━━━━━━━\n\nاخبار دریافت‌شده از RSS (تعداد: {{ $json.count }}):\n{{ $json.news }}",
+        "messages": {
+          "messageValues": []
+        },
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        576,
+        -64
+      ],
+      "id": "f05bec70-7935-4671-975f-a2649f1a1df5",
+      "name": "Basic LLM Chain"
+    },
+    {
+      "parameters": {
+        "model": "inclusionai/ling-3.0-flash-fin:free",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        576,
+        256
+      ],
+      "id": "2cc49381-8ba3-4be8-942a-97c8c5755918",
+      "name": "OpenRouter Chat Model",
+      "credentials": {
+        "openRouterApi": {
+          "id": "BiDYJlvIqrqsNCwu",
+          "name": "OpenRouter account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "33917341",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "id": "c67b60c4-174c-4ae0-96d5-324cc5aa8b37",
+      "name": "Telegram Report",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        928,
+        -64
+      ],
+      "webhookId": "e9736643-1f6c-4cfc-9273-5aefcef5de3d",
+      "credentials": {
+        "telegramApi": {
+          "id": "ucFwjfv95TWzb8Zi",
+          "name": "Telegram account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Every 4 Hours": {
+      "main": [
+        [
+          {
+            "node": "List of RSS URLs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List of RSS URLs": {
+      "main": [
+        [
+          {
+            "node": "RSS Read",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RSS Read": {
+      "main": [
+        [
+          {
+            "node": "Filter Market News",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Market News": {
+      "main": [
+        [
+          {
+            "node": "Build AI Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build AI Prompt": {
+      "main": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Basic LLM Chain": {
+      "main": [
+        [
+          {
+            "node": "Telegram Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "112c508f-8d00-46ea-a465-e3027ad58c66",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "f562fc5d21a8bf3b0f292ff1b9a27cd69a7bbe91b36c3afb4f73267394c3d803"
+  },
+  "nodeGroups": [],
+  "id": "xHDGxtIaG2WYyNUh",
+  "tags": []
+}
