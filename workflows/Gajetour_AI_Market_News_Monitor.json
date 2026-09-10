@@ -1,0 +1,86 @@
+{
+  "name": "Gajetour AI Market News Monitor",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 4
+            }
+          ]
+        }
+      },
+      "id": "schedule-4h",
+      "name": "Every 4 Hours",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0,0]
+    },
+    {
+      "parameters": {
+        "url": "https://www.yjc.ir/fa/rss/3,https://www.yjc.ir/fa/rss/9,https://www.shahrekhabar.com/rss.jsp?type=3,https://www.tabnak.ir/fa/rss/6"
+      },
+      "id": "rss-reader",
+      "name": "RSS Sources",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1,
+      "position": [300,0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const keywords=['بورس','دلار','ارز','طلا','سکه','نفت','بیت کوین','رمزارز','تحریم','جنگ'];\nreturn items.filter(i=>keywords.some(k=>JSON.stringify(i.json).includes(k)));"
+      },
+      "id": "filter-news",
+      "name": "Filter Market News",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [550,0]
+    },
+    {
+      "parameters": {
+        "jsCode": "let news=items.map(i=>i.json.title+' '+(i.json.content||'')).join('\\n\\n');\nreturn [{json:{news:news.substring(0,12000)}}];"
+      },
+      "id": "build-prompt",
+      "name": "Build AI Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [800,0]
+    },
+    {
+      "parameters": {
+        "method":"POST",
+        "url":"http://192.168.100.100:20128/v1/chat/completions",
+        "sendBody":true,
+        "jsonBody":"={\"model\":\"YOUR_MODEL\",\"temperature\":0.2,\"messages\":[{\"role\":\"system\",\"content\":\"Analyze financial market impact.\"},{\"role\":\"user\",\"content\":$json.news}]}"
+      },
+      "id":"9router-api",
+      "name":"Send To 9router",
+      "type":"n8n-nodes-base.httpRequest",
+      "typeVersion":4.2,
+      "position":[1050,0]
+    },
+    {
+      "parameters":{
+        "chatId":"YOUR_TELEGRAM_CHAT_ID",
+        "text":"={{$json.choices[0].message.content}}"
+      },
+      "id":"telegram-send",
+      "name":"Telegram Report",
+      "type":"n8n-nodes-base.telegram",
+      "typeVersion":1.2,
+      "position":[1300,0]
+    }
+  ],
+  "connections":{
+    "Every 4 Hours":{"main":[[{"node":"RSS Sources","type":"main","index":0}]]},
+    "RSS Sources":{"main":[[{"node":"Filter Market News","type":"main","index":0}]]},
+    "Filter Market News":{"main":[[{"node":"Build AI Prompt","type":"main","index":0}]]},
+    "Build AI Prompt":{"main":[[{"node":"Send To 9router","type":"main","index":0}]]},
+    "Send To 9router":{"main":[[{"node":"Telegram Report","type":"main","index":0}]]}
+  },
+  "active":false,
+  "settings":{"executionOrder":"v1"},
+  "versionId":"gajetour-ai-market-v1"
+}
