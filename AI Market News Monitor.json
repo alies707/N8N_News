@@ -1,233 +1,53 @@
 {
   "name": "Gajetour AI Market News Monitor",
   "nodes": [
-    {
-      "parameters": {
-        "rule": {
-          "interval": [
-            {
-              "field": "hours",
-              "hoursInterval": 4
-            }
-          ]
-        }
-      },
-      "id": "65968ab1-db37-46ee-8409-319f5349d4a9",
-      "name": "Every 4 Hours",
-      "type": "n8n-nodes-base.scheduleTrigger",
-      "typeVersion": 1.2,
-      "position": [
-        -400,
-        -64
-      ]
-    },
-    {
-      "parameters": {
-        "jsCode": "const feeds = [\n  'https://www.yjc.ir/fa/rss/3',\n  'https://www.yjc.ir/fa/rss/9',\n  'https://www.yjc.ir/fa/rss/9/121',\n  'https://www.yjc.ir/fa/rss/6',\n  'https://www.yjc.ir/fa/rss/6/44',\n  'https://www.shahrekhabar.com/rss.jsp?type=3',\n  'https://www.shahrekhabar.com/rss.jsp?type=4',\n  'https://www.shahrekhabar.com/rss.jsp?type=2',\n  'https://www.tabnak.ir/fa/rss/17',\n  'https://www.tabnak.ir/fa/rss/1',\n  'https://www.tabnak.ir/fa/rss/6'\n];\nreturn feeds.map(url => ({ json: { url } }));\n"
-      },
-      "id": "07484c6a-980c-422d-8ed1-4b7eba8398a7",
-      "name": "List of RSS URLs",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        -224,
-        -64
-      ]
-    },
-    {
-      "parameters": {
-        "url": "={{ $json.url }}",
-        "options": {}
-      },
-      "id": "b5c46de7-426f-43ed-ace9-756a015e1613",
-      "name": "RSS Read",
-      "type": "n8n-nodes-base.rssFeedRead",
-      "typeVersion": 1,
-      "position": [
-        -48,
-        -64
-      ]
-    },
-    {
-      "parameters": {
-        "jsCode": "const keywords = ['بورس', 'بازار سرمایه', 'سهام', 'شاخص', 'دلار', 'ارز', 'طلا', 'سکه', 'نفت', 'تحریم', 'جنگ', 'بانک مرکزی', 'کدال', 'هولدینگ'];\nreturn items.filter(i => keywords.some(k => JSON.stringify(i.json).includes(k)));\n"
-      },
-      "id": "e8422b13-6d94-4003-838e-7b6e2e84a2e4",
-      "name": "Filter Market News",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        160,
-        -64
-      ]
-    },
-    {
-      "parameters": {
-        "jsCode": "// ─── تجمیع اخبار + حذف تکراری‌ها + تاریخ شمسی (الگوریتم jalaali) ───\nconst MAX_CHARS = 12000;\nconst MAX_ITEMS = 50;\n\n// ─── تبدیل میلادی به شمسی: پیاده‌سازی الگوریتم jalaali-js ───\nfunction div(a, b) { return ~~(a / b); }\nfunction mod(a, b) { return a - ~~(a / b) * b; }\n\nfunction jalCal(jy) {\n  const breaks = [-61, 9, 38, 199, 426, 686, 756, 818, 1111, 1181, 1210, 1635, 2060, 2097, 2192, 2262, 2324, 2394, 2456, 3178];\n  const bl = breaks.length;\n  const gy = jy + 621;\n  let leapJ = -14;\n  let jp = breaks[0];\n  let jump = 0;\n  for (let i = 1; i < bl; i += 1) {\n    const jm = breaks[i];\n    jump = jm - jp;\n    if (jy < jm) break;\n    leapJ = leapJ + div(jump, 33) * 8 + div(mod(jump, 33), 4);\n    jp = jm;\n  }\n  let n = jy - jp;\n  leapJ = leapJ + div(n, 33) * 8 + div(mod(n, 33) + 3, 4);\n  if (mod(jump, 33) === 4 && jump - n === 4) leapJ += 1;\n  const leapG = div(gy, 4) - div((div(gy, 100) + 1) * 3, 4) - 150;\n  const march = 20 + leapJ - leapG;\n  if (jump - n < 6) n = n - jump + div(jump + 4, 33) * 33;\n  let leap = mod(mod(n + 1, 33) - 1, 4);\n  if (leap === -1) leap = 4;\n  return { leap, gy, march };\n}\n\nfunction g2d(gy, gm, gd) {\n  let d = div((gy + div(gm - 8, 6) + 100100) * 1461, 4) + div(153 * mod(gm + 9, 12) + 2, 5) + gd - 34840408;\n  d = d - div(div(gy + 100100 + div(gm - 8, 6), 100) * 3, 4) + 752;\n  return d;\n}\n\nfunction d2j(jdn) {\n  const gy = jyFromJdn(jdn);\n  let jy = gy - 621;\n  const r = jalCal(jy);\n  const jdn1f = g2d(gy, 3, r.march);\n  let k = jdn - jdn1f;\n  if (k >= 0) {\n    if (k <= 185) return { jy, jm: 1 + div(k, 31), jd: mod(k, 31) + 1 };\n    k -= 186;\n  } else {\n    jy -= 1;\n    k += 179;\n    if (r.leap === 1) k += 1;\n  }\n  return { jy, jm: 7 + div(k, 30), jd: mod(k, 30) + 1 };\n}\n\nfunction jyFromJdn(jdn) {\n  let j = 4 * jdn + 139361631;\n  j = j + div(div(4 * jdn + 183187720, 146097) * 3, 4) * 4 - 3908;\n  const i = div(mod(j, 1461), 4) * 5 + 308;\n  const gm = mod(div(i, 153), 12) + 1;\n  return div(j, 1461) - 100100 + div(8 - gm, 6);\n}\n\nfunction toJalali(gy, gm, gd) {\n  return d2j(g2d(gy, gm, gd));\n}\n\n// ─── زمان تهران (UTC+3:30) و قالب‌بندی شمسی ───\nconst toFa = (n) => String(n).replace(/\\d/g, (d) => '۰۱۲۳۴۵۶۷۸۹'[d]);\nconst pad2 = (n) => (n < 10 ? '0' + n : String(n));\n\n// ایران از سال ۱۴۰۱ ساعت تابستانی ندارد و همیشه UTC+3:30 است\nconst tehran = new Date(Date.now() + 3.5 * 60 * 60 * 1000);\nconst j = toJalali(tehran.getUTCFullYear(), tehran.getUTCMonth() + 1, tehran.getUTCDate());\nconst jMonths = ['فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور', 'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند'];\n// getUTCDay: 0=یکشنبه، 1=دوشنبه، ...، 5=جمعه، 6=شنبه\nconst jWeekdays = ['یک\\u200cشنبه', 'دوشنبه', 'سه\\u200cشنبه', 'چهارشنبه', 'پنج\\u200cشنبه', 'جمعه', 'شنبه'];\nconst analysisTime = jWeekdays[tehran.getUTCDay()] + ' ' + toFa(j.jd) + ' ' + jMonths[j.jm - 1] + ' ' + toFa(j.jy) +\n  ' — ساعت ' + toFa(pad2(tehran.getUTCHours())) + ':' + toFa(pad2(tehran.getUTCMinutes()));\n\n// ─── مرتب‌سازی اخبار از جدیدترین + حذف تکراری‌ها ───\nfunction normalizeTitle(t) {\n  return String(t || '')\n    .replace(/[\\u200c\\u200f\\u200e\\s]+/g, ' ')\n    .replace(/[«»\"'?!.,:؛،()[\\]{}\\-–—_\\/]/g, '')\n    .trim();\n}\n\nconst dated = items.map((i) => {\n  const ts = Date.parse(i.json.isoDate || i.json.pubDate || '');\n  return { item: i, ts: isNaN(ts) ? 0 : ts };\n}).sort((a, b) => b.ts - a.ts);\n\nconst seen = new Set();\nconst lines = [];\nfor (const { item } of dated) {\n  if (lines.length >= MAX_ITEMS) break;\n  const title = String(item.json.title || '').replace(/\\s+/g, ' ').trim();\n  if (!title) continue;\n  const key = normalizeTitle(title).slice(0, 45);\n  if (seen.has(key)) continue;\n  seen.add(key);\n  const snippet = String(item.json.contentSnippet || item.json.content || '')\n    .replace(/<[^>]*>/g, ' ')\n    .replace(/\\s+/g, ' ')\n    .trim()\n    .slice(0, 300);\n  lines.push('• ' + title + (snippet ? '\\n  ' + snippet : ''));\n}\n\nlet news = lines.length ? lines.join('\\n\\n') : 'هیچ خبر مرتبطی یافت نشد.';\nif (news.length > MAX_CHARS) news = news.slice(0, MAX_CHARS);\n\nreturn [{ json: { news, analysisTime, count: lines.length } }];\n"
-      },
-      "id": "a228e938-c500-43d6-a68e-4535424e7a1a",
-      "name": "Build AI Prompt",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        400,
-        -64
-      ]
-    },
-    {
-      "parameters": {
-        "promptType": "define",
-        "text": "=تو یک تحلیلگر ارشد بازار سرمایه ایران هستی؛ متخصص بورس تهران (TSE) و فرابورس با سال‌ها تجربه کار عملیاتی در تالار معاملات. گزارش تو برای معامله‌گران حرفه‌ای بورس ایران تهیه می‌شود.\n\n⚠️ محدوده تحلیل (حیاتی):\n- تحلیل تو فقط و فقط درباره «بورس ایران (بورس تهران و فرابورس)» است.\n- به بورس سایر کشورها (آمریکا، اروپا، چین و...) و شاخص‌های خارجی (داو جونز، S&P500، نزدک و...) هیچ اشاره‌ای نکن.\n\nوظیفه تو:\nبر اساس فقط و فقط اخبار زیر، اثر هر خبر را بر بورس تهران تحلیل کن و زنجیره اثر هر خبر را دنبال کن (مثال: تحریم یا تنش سیاسی ← نرخ دلار ← سهام صادراتی؛ نفت جهانی ← پتروشیمی، پالایش و فولاد؛ تصمیم بانک مرکزی ← نقدینگی و جریان پول به بازار).\n\nقوانین تحلیل:\n- فقط از اخبار ارائه‌شده استفاده کن؛ هیچ داده بیرونی، حدس شخصی یا اطلاعات عمومی اضافه نکن.\n- خبر بدون اثر مشخص بر بورس ایران را «خنثی» اعلام کن و روی آن وقت نگذار.\n- پیش‌بینی قطعی خرید یا فروش ممنوع است؛ فقط سناریو و احتمال بده.\n- اخبار تکراری را فقط یک بار لحاظ کن.\n- برای هر اثر، افق زمانی مشخص کن: کوتاه‌مدت (چند ساعت تا چند روز) یا میان‌مدت (چند هفته).\n- اگر هیچ خبر مرتبطی وجود ندارد، فقط در یک خط بنویس «خبر مرتبطی یافت نشد؛ وضعیت بازار: خنثی» و بقیه بخش‌ها را خالی نگذار و همان یک خط را ارسال کن.\n\nسبک خروجی (بسیار مهم):\n- بسیار کوتاه، فشرده و کاربردی بنویس؛ بدون مقدمه، تعارف و توضیح اضافه. کل گزارش زیر ۲۵ خط باشد.\n- هر تحلیل حداکثر یک خط.\n- از ادبیات حرفه‌ای معامله‌گران بورس ایران استفاده کن: عرضه و تقاضا، نقدینگی، صف خرید و فروش، حقیقی و حقوقی، صادراتی‌ها، هولدینگ‌ها، ریسک سیستماتیک و...\n\nفرمت خروجی — دقیقاً همین ساختار را رعایت کن:\n\n━━━━━━━━━━━━━━━━\n📊 رصد هوشمند بورس تهران\n🕒 زمان تحلیل: {{ $json.analysisTime }}\n━━━━━━━━━━━━━━━━\n\n🚨 خبرهای کلیدی:\n• [عنوان خبر] → 🟢 یا 🔴 یا ⚪ | شدت: X/10 | افق: کوتاه‌مدت یا میان‌مدت\n(فقط تا ۳ خبر مهم‌تر)\n\n📈 نمای کلی بازار: 🟢 یا 🔴 یا ⚪ (شدت X/10)\n[یک خط دلیل فنی]\n\n🎯 گروه‌های اثرپذیر بورس:\n• [گروه یا صنعت] → 🟢 یا 🔴 یا ⚪ (X/10) — [یک خط دلیل]\n(فقط ۲ تا ۴ گروه)\n\n💵 عوامل کلان مؤثر بر بورس:\n• دلار: [یک خط]\n• طلا و سکه: [یک خط]\n• نفت: [یک خط]\n(هر عامل فقط در صورت وجود خبر مرتبط؛ در غیر این صورت همان خط را «خنثی» بنویس)\n\n⚠️ اصلی‌ترین ریسک امروز: [یک خط]\n\n📌 جمع‌بندی برای معامله‌گر: [حداکثر دو خط، مشخص و جانب‌دار نباش]\n\n🤖 Gajetour Market Monitor\n━━━━━━━━━━━━━━━━\n\nاخبار دریافت‌شده از RSS (تعداد: {{ $json.count }}):\n{{ $json.news }}",
-        "messages": {
-          "messageValues": []
-        },
-        "batching": {}
-      },
-      "type": "@n8n/n8n-nodes-langchain.chainLlm",
-      "typeVersion": 1.9,
-      "position": [
-        576,
-        -64
-      ],
-      "id": "f05bec70-7935-4671-975f-a2649f1a1df5",
-      "name": "Basic LLM Chain"
-    },
-    {
-      "parameters": {
-        "model": "inclusionai/ling-3.0-flash-fin:free",
-        "options": {}
-      },
-      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
-      "typeVersion": 1,
-      "position": [
-        576,
-        256
-      ],
-      "id": "2cc49381-8ba3-4be8-942a-97c8c5755918",
-      "name": "OpenRouter Chat Model",
-      "credentials": {
-        "openRouterApi": {
-          "id": "BiDYJlvIqrqsNCwu",
-          "name": "OpenRouter account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "chatId": "33917341",
-        "text": "={{ $json.text }}",
-        "additionalFields": {
-          "appendAttribution": false
-        }
-      },
-      "id": "c67b60c4-174c-4ae0-96d5-324cc5aa8b37",
-      "name": "Telegram Report",
-      "type": "n8n-nodes-base.telegram",
-      "typeVersion": 1.2,
-      "position": [
-        928,
-        -64
-      ],
-      "webhookId": "e9736643-1f6c-4cfc-9273-5aefcef5de3d",
-      "credentials": {
-        "telegramApi": {
-          "id": "ucFwjfv95TWzb8Zi",
-          "name": "Telegram account"
-        }
-      }
-    }
+    {"parameters":{"rule":{"interval":[{"field":"hours","hoursInterval":4}]}},"id":"65968ab1-db37-46ee-8409-319f5349d4a9","name":"Every 4 Hours","type":"n8n-nodes-base.scheduleTrigger","typeVersion":1.2,"position":[-800,0]},
+    {"parameters":{"url":"https://www.yjc.ir/fa/rss/3","options":{}},"id":"rss-yjc-3","name":"RSS YJC 3","type":"n8n-nodes-base.rssFeedRead","typeVersion":1,"position":[-560,-600]},
+    {"parameters":{"url":"https://www.yjc.ir/fa/rss/9","options":{}},"id":"rss-yjc-9","name":"RSS YJC 9","type":"n8n-nodes-base.rssFeedRead","typeVersion":1,"position":[-560,-480]},
+    {"parameters":{"url":"https://www.yjc.ir/fa/rss/9/121","options":{}},"id":"rss-yjc-9-121","name":"RSS YJC 9 121","type":"n8n-nodes-base.rssFeedRead","typeVersion":1,"position":[-560,-360]},
+    {"parameters":{"url":"https://www.yjc.ir/fa/rss/6","options":{}},"id":"rss-yjc-6","name":"RSS YJC 6","type":"n8n-nodes-base.rssFeedRead","typeVersion":1,"position":[-560,-240]},
+    {"parameters":{"url":"https://www.yjc.ir/fa/rss/6/44","options":{}},"id":"rss-yjc-6-44","name":"RSS YJC 6 44","type":"n8n-nodes-base.rssFeedRead","typeVersion":1,"position":[-560,-120]},
+    {"parameters":{"url":"https://www.shahrekhabar.com/rss.jsp?type=3","options":{}},"id":"rss-shahrekhabar-3","name":"RSS Shahrekhabar 3","type":"n8n-nodes-base.rssFeedRead","typeVersion":1,"position":[-560,0]},
+    {"parameters":{"url":"https://www.shahrekhabar.com/rss.jsp?type=4","options":{}},"id":"rss-shahrekhabar-4","name":"RSS Shahrekhabar 4","type":"n8n-nodes-base.rssFeedRead","typeVersion":1,"position":[-560,120]},
+    {"parameters":{"url":"https://www.shahrekhabar.com/rss.jsp?type=2","options":{}},"id":"rss-shahrekhabar-2","name":"RSS Shahrekhabar 2","type":"n8n-nodes-base.rssFeedRead","typeVersion":1,"position":[-560,240]},
+    {"parameters":{"url":"https://www.tabnak.ir/fa/rss/17","options":{}},"id":"rss-tabnak-17","name":"RSS Tabnak 17","type":"n8n-nodes-base.rssFeedRead","typeVersion":1,"position":[-560,360]},
+    {"parameters":{"url":"https://www.tabnak.ir/fa/rss/1","options":{}},"id":"rss-tabnak-1","name":"RSS Tabnak 1","type":"n8n-nodes-base.rssFeedRead","typeVersion":1,"position":[-560,480]},
+    {"parameters":{"url":"https://www.tabnak.ir/fa/rss/6","options":{}},"id":"rss-tabnak-6","name":"RSS Tabnak 6","type":"n8n-nodes-base.rssFeedRead","typeVersion":1,"position":[-560,600]},
+    {"parameters":{"mode":"append","options":{}},"id":"merge-1","name":"Merge RSS 1 2","type":"n8n-nodes-base.merge","typeVersion":3.2,"position":[-240,-540]},
+    {"parameters":{"mode":"append","options":{}},"id":"merge-2","name":"Merge RSS 1 to 3","type":"n8n-nodes-base.merge","typeVersion":3.2,"position":[-40,-420]},
+    {"parameters":{"mode":"append","options":{}},"id":"merge-3","name":"Merge RSS 1 to 4","type":"n8n-nodes-base.merge","typeVersion":3.2,"position":[160,-300]},
+    {"parameters":{"mode":"append","options":{}},"id":"merge-4","name":"Merge RSS 1 to 5","type":"n8n-nodes-base.merge","typeVersion":3.2,"position":[360,-180]},
+    {"parameters":{"mode":"append","options":{}},"id":"merge-5","name":"Merge RSS 1 to 6","type":"n8n-nodes-base.merge","typeVersion":3.2,"position":[560,-60]},
+    {"parameters":{"mode":"append","options":{}},"id":"merge-6","name":"Merge RSS 1 to 7","type":"n8n-nodes-base.merge","typeVersion":3.2,"position":[760,60]},
+    {"parameters":{"mode":"append","options":{}},"id":"merge-7","name":"Merge RSS 1 to 8","type":"n8n-nodes-base.merge","typeVersion":3.2,"position":[960,180]},
+    {"parameters":{"mode":"append","options":{}},"id":"merge-8","name":"Merge RSS 1 to 9","type":"n8n-nodes-base.merge","typeVersion":3.2,"position":[1160,300]},
+    {"parameters":{"mode":"append","options":{}},"id":"merge-9","name":"Merge RSS 1 to 10","type":"n8n-nodes-base.merge","typeVersion":3.2,"position":[1360,420]},
+    {"parameters":{"mode":"append","options":{}},"id":"merge-10","name":"Merge All RSS","type":"n8n-nodes-base.merge","typeVersion":3.2,"position":[1560,540]},
+    {"parameters":{"jsCode":"// تمام اخبار همه RSSها را جمع می‌کنیم؛ هیچ فیلتر موضوعی انجام نمی‌شود.\n// فقط Duplicate بر اساس عنوان حذف می‌شود.\nconst normalize = v => String(v || '').replace(/[\\u200c\\u200f\\u200e\\s]+/g,' ').replace(/[«»\\\"'?!.,:؛،()[\\]{}\\-–—_\\/]/g,'').trim().toLowerCase();\nconst now = new Date();\nconst analysisTime = new Intl.DateTimeFormat('fa-IR-u-ca-persian',{timeZone:'Asia/Tehran',dateStyle:'full',timeStyle:'short'}).format(now);\nconst dated = items.map((item,index)=>{const j=item.json||{}; const ts=Date.parse(j.isoDate||j.pubDate||j.pubdate||'')||0; const title=String(j.title||'').replace(/\\s+/g,' ').trim(); const description=String(j.contentSnippet||j.content||j.description||'').replace(/<[^>]*>/g,' ').replace(/\\s+/g,' ').trim(); const source=String(j.creator||j.author||j.source||'').trim(); const link=String(j.link||'').trim(); return {index,item,ts,title,description,source,link};}).sort((a,b)=>b.ts-a.ts);\nconst seen=new Set(); const news=[];\nfor(const e of dated){if(!e.title)continue; const key=normalize(e.title); if(!key||seen.has(key))continue; seen.add(key); news.push({no:news.length+1,title:e.title,description:e.description,source:e.source,link:e.link,publishedAt:e.ts?new Date(e.ts).toISOString():''});}\nconst newsText=news.map(n=>{const p=[`${n.no}. ${n.title}`]; if(n.description)p.push(`خلاصه: ${n.description.slice(0,500)}`); if(n.source)p.push(`منبع: ${n.source}`); if(n.publishedAt)p.push(`تاریخ انتشار: ${n.publishedAt}`); return p.join('\\n');}).join('\\n\\n');\nreturn [{json:{analysisTime,count:news.length,news,newsText:newsText||'هیچ خبری از RSSها دریافت نشد.'}}];\n"},"id":"build-ai-prompt-v2","name":"Build Complete News Prompt","type":"n8n-nodes-base.code","typeVersion":2,"position":[1780,540]},
+    {"parameters":{"promptType":"define","text":"={{ `تو یک تحلیلگر ارشد و بی‌طرف Market Intelligence هستی. مأموریت تو تحلیل مجموعه کامل اخبار دریافت‌شده از RSS است.\n\nاصل حیاتی:\n- تمام اخبار ارائه‌شده را بررسی کن و هیچ خبر را صرفاً به دلیل اینکه ظاهراً اقتصادی یا بورسی نیست حذف نکن.\n- تشخیص ارتباط هر خبر با بازارها بر عهده توست.\n- خبر سیاسی، امنیتی، انرژی، بین‌المللی، اقتصادی، صنعتی، بانکی یا داخلی می‌تواند از مسیر مستقیم یا غیرمستقیم بر بازارها اثر بگذارد.\n- اخبار تکراری قبلاً در n8n حذف شده‌اند.\n- فقط از اطلاعات موجود در اخبار استفاده کن و داده بیرونی یا قیمت لحظه‌ای اضافه نکن.\n- اگر خبری برای یک بازار اثر قابل اتکا ندارد، آن بازار را خنثی اعلام کن.\n- بین اثر مستقیم و اثر غیرمستقیم از طریق زنجیره اقتصادی تفاوت بگذار.\n- نتیجه‌گیری قطعی خرید یا فروش ممنوع است؛ سناریو و عدم‌قطعیت را توضیح بده.\n\nپنج بازار هدف را حتماً جداگانه بررسی کن:\n1) ₿ بازار رمز ارز\n2) 🛢 نفت\n3) 📈 بورس ایران، شامل بورس تهران و فرابورس\n4) 🥇 طلا و سکه در ایران\n5) 💵 قیمت دلار در ایران\n\nبرای هر بازار مشخص کن: جهت اثر 🟢 مثبت / 🔴 منفی / ⚪ خنثی، شدت 0 تا 10، افق کوتاه‌مدت یا میان‌مدت، شماره خبرهای مؤثر و توضیح زنجیره اثرگذاری.\n\nشدت اثر را بر اساس تعداد خبرها تعیین نکن. اهمیت و محتوای خبر، جهت اثر و ارتباط اقتصادی آن با بازار معیار باشد. تمام اخبار را ابتدا در کنار هم تحلیل کن و سپس اثر ترکیبی آنها را استخراج کن.\n\nگزارش را دقیقاً با ساختار زیر و به زبان فارسی تولید کن:\n\n━━━━━━━━━━━━━━━━\n📰 Gajetour Market Intelligence\n🕒 زمان تحلیل: ${$json.analysisTime}\n📚 تعداد اخبار بررسی‌شده: ${$json.count}\n━━━━━━━━━━━━━━━━\n\n📌 ۱. خلاصه و تحلیل کل اخبار\n[جمع‌بندی منسجم مهم‌ترین اتفاقات و ارتباط میان اخبار]\n\n🔗 ۲. زنجیره‌های اثرگذاری اصلی\n• [خبر/رویداد] → [واسطه] → [بازار] → [اثر]\n\n━━━━━━━━━━━━━━━━\n₿ ۳. بازار رمز ارز\nاثر: 🟢/🔴/⚪ | شدت: X/10 | افق: کوتاه‌مدت/میان‌مدت\nمبنای تحلیل: [شماره خبرها]\nتحلیل: [توضیح]\n\n🛢 ۴. بازار نفت\nاثر: 🟢/🔴/⚪ | شدت: X/10 | افق: کوتاه‌مدت/میان‌مدت\nمبنای تحلیل: [شماره خبرها]\nتحلیل: [توضیح]\n\n📈 ۵. بورس ایران\nاثر: 🟢/🔴/⚪ | شدت: X/10 | افق: کوتاه‌مدت/میان‌مدت\nمبنای تحلیل: [شماره خبرها]\nتحلیل: [توضیح درباره صنایع یا گروه‌های اثرپذیر در صورت وجود شواهد]\n\n🥇 ۶. طلا و سکه ایران\nاثر: 🟢/🔴/⚪ | شدت: X/10 | افق: کوتاه‌مدت/میان‌مدت\nمبنای تحلیل: [شماره خبرها]\nتحلیل: [توضیح]\n\n💵 ۷. دلار در ایران\nاثر: 🟢/🔴/⚪ | شدت: X/10 | افق: کوتاه‌مدت/میان‌مدت\nمبنای تحلیل: [شماره خبرها]\nتحلیل: [توضیح]\n\n━━━━━━━━━━━━━━━━\n⚠️ ۸. مهم‌ترین ریسک‌ها و عدم‌قطعیت‌ها\n• [ریسک اصلی]\n\n🎯 ۹. جمع‌بندی نهایی\n[جمع‌بندی فنی و بی‌طرف از پنج بازار؛ بدون توصیه قطعی خرید یا فروش]\n\n🤖 Gajetour Market Monitor\n━━━━━━━━━━━━━━━━\n\nاخبار کامل ورودی:\n${$json.newsText}` }}","messages":{"messageValues":[]},"batching":{}},"id":"f05bec70-7935-4671-975f-a2649f1a1df5","name":"Basic LLM Chain","type":"@n8n/n8n-nodes-langchain.chainLlm","typeVersion":1.9,"position":[2000,540]},
+    {"parameters":{"model":"inclusionai/ling-3.0-flash-fin:free","options":{}},"type":"@n8n/n8n-nodes-langchain.lmChatOpenRouter","typeVersion":1,"position":[2000,760],"id":"2cc49381-8ba3-4be8-942a-97c8c5755918","name":"OpenRouter Chat Model","credentials":{"openRouterApi":{"id":"BiDYJlvIqrqsNCwu","name":"OpenRouter account"}}},
+    {"parameters":{"chatId":"33917341","text":"={{ $json.text }}","additionalFields":{"appendAttribution":false}},"id":"c67b60c4-174c-4ae0-96d5-324cc5aa8b37","name":"Telegram Report","type":"n8n-nodes-base.telegram","typeVersion":1.2,"position":[2240,540],"webhookId":"e9736643-1f6c-4cfc-9273-5aefcef5de3d","credentials":{"telegramApi":{"id":"ucFwjfv95TWzb8Zi","name":"Telegram account"}}}
   ],
   "pinData": {},
   "connections": {
-    "Every 4 Hours": {
-      "main": [
-        [
-          {
-            "node": "List of RSS URLs",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "List of RSS URLs": {
-      "main": [
-        [
-          {
-            "node": "RSS Read",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "RSS Read": {
-      "main": [
-        [
-          {
-            "node": "Filter Market News",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Filter Market News": {
-      "main": [
-        [
-          {
-            "node": "Build AI Prompt",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Build AI Prompt": {
-      "main": [
-        [
-          {
-            "node": "Basic LLM Chain",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Basic LLM Chain": {
-      "main": [
-        [
-          {
-            "node": "Telegram Report",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "OpenRouter Chat Model": {
-      "ai_languageModel": [
-        [
-          {
-            "node": "Basic LLM Chain",
-            "type": "ai_languageModel",
-            "index": 0
-          }
-        ]
-      ]
-    }
+    "Every 4 Hours":{"main":[[{"node":"RSS YJC 3","type":"main","index":0},{"node":"RSS YJC 9","type":"main","index":0},{"node":"RSS YJC 9 121","type":"main","index":0},{"node":"RSS YJC 6","type":"main","index":0},{"node":"RSS YJC 6 44","type":"main","index":0},{"node":"RSS Shahrekhabar 3","type":"main","index":0},{"node":"RSS Shahrekhabar 4","type":"main","index":0},{"node":"RSS Shahrekhabar 2","type":"main","index":0},{"node":"RSS Tabnak 17","type":"main","index":0},{"node":"RSS Tabnak 1","type":"main","index":0},{"node":"RSS Tabnak 6","type":"main","index":0}]]},
+    "RSS YJC 3":{"main":[[{"node":"Merge RSS 1 2","type":"main","index":0}]]},"RSS YJC 9":{"main":[[{"node":"Merge RSS 1 2","type":"main","index":1}]]},
+    "Merge RSS 1 2":{"main":[[{"node":"Merge RSS 1 to 3","type":"main","index":0}]]},"RSS YJC 9 121":{"main":[[{"node":"Merge RSS 1 to 3","type":"main","index":1}]]},
+    "Merge RSS 1 to 3":{"main":[[{"node":"Merge RSS 1 to 4","type":"main","index":0}]]},"RSS YJC 6":{"main":[[{"node":"Merge RSS 1 to 4","type":"main","index":1}]]},
+    "Merge RSS 1 to 4":{"main":[[{"node":"Merge RSS 1 to 5","type":"main","index":0}]]},"RSS YJC 6 44":{"main":[[{"node":"Merge RSS 1 to 5","type":"main","index":1}]]},
+    "Merge RSS 1 to 5":{"main":[[{"node":"Merge RSS 1 to 6","type":"main","index":0}]]},"RSS Shahrekhabar 3":{"main":[[{"node":"Merge RSS 1 to 6","type":"main","index":1}]]},
+    "Merge RSS 1 to 6":{"main":[[{"node":"Merge RSS 1 to 7","type":"main","index":0}]]},"RSS Shahrekhabar 4":{"main":[[{"node":"Merge RSS 1 to 7","type":"main","index":1}]]},
+    "Merge RSS 1 to 7":{"main":[[{"node":"Merge RSS 1 to 8","type":"main","index":0}]]},"RSS Shahrekhabar 2":{"main":[[{"node":"Merge RSS 1 to 8","type":"main","index":1}]]},
+    "Merge RSS 1 to 8":{"main":[[{"node":"Merge RSS 1 to 9","type":"main","index":0}]]},"RSS Tabnak 17":{"main":[[{"node":"Merge RSS 1 to 9","type":"main","index":1}]]},
+    "Merge RSS 1 to 9":{"main":[[{"node":"Merge RSS 1 to 10","type":"main","index":0}]]},"RSS Tabnak 1":{"main":[[{"node":"Merge RSS 1 to 10","type":"main","index":1}]]},
+    "Merge RSS 1 to 10":{"main":[[{"node":"Merge All RSS","type":"main","index":0}]]},"RSS Tabnak 6":{"main":[[{"node":"Merge All RSS","type":"main","index":1}]]},
+    "Merge All RSS":{"main":[[{"node":"Build Complete News Prompt","type":"main","index":0}]]},"Build Complete News Prompt":{"main":[[{"node":"Basic LLM Chain","type":"main","index":0}]]},"Basic LLM Chain":{"main":[[{"node":"Telegram Report","type":"main","index":0}]]},"OpenRouter Chat Model":{"ai_languageModel":[[{"node":"Basic LLM Chain","type":"ai_languageModel","index":0}]]}
   },
   "active": false,
-  "settings": {
-    "executionOrder": "v1",
-    "binaryMode": "separate"
-  },
-  "versionId": "112c508f-8d00-46ea-a465-e3027ad58c66",
-  "meta": {
-    "templateCredsSetupCompleted": true,
-    "instanceId": "f562fc5d21a8bf3b0f292ff1b9a27cd69a7bbe91b36c3afb4f73267394c3d803"
-  },
-  "nodeGroups": [],
-  "id": "xHDGxtIaG2WYyNUh",
-  "tags": []
+  "settings": {"executionOrder":"v1","binaryMode":"separate"},
+  "versionId":"news-monitor-v2-complete-analysis",
+  "meta":{"templateCredsSetupCompleted":true,"instanceId":"f562fc5d21a8bf3b0f292ff1b9a27cd69a7bbe91b36c3afb4f73267394c3d803"},
+  "nodeGroups":[],
+  "id":"xHDGxtIaG2WYyNUh",
+  "tags":[]
 }
